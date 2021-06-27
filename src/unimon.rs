@@ -1,8 +1,9 @@
 use amethyst::{
-    assets::{AssetStorage, Loader},
+    assets::{AssetStorage, Loader, Handle},
     core::transform::Transform,
     input::{get_key, is_close_requested, is_key_down, VirtualKeyCode},
     prelude::*,
+    ecs::{Component, DenseVecStorage, Entity},
     renderer::{Camera, ImageFormat, SpriteRender, SpriteSheet, SpriteSheetFormat, Texture},
     ui::{
         Anchor, FontHandle, LineMode, Stretch, TtfFormat, UiButtonBuilder, UiImage, UiText,
@@ -13,10 +14,13 @@ use amethyst::{
 
 use log::info;
 
-/// A dummy game state that shows 3 sprites.
-pub struct MyState;
+// Main state, currently holds player sprite
+#[derive(Default)]
+pub struct Unimon {
+    sprite_sheet_handle: Option<Handle<SpriteSheet>>,
+}
 
-impl SimpleState for MyState {
+impl SimpleState for Unimon {
     // Here, we define hooks that will be called throughout the lifecycle of our game state.
     //
     // In this example, `on_start` is used for initializing entities
@@ -36,12 +40,19 @@ impl SimpleState for MyState {
         // pass the world mutably to the following functions.
         let dimensions = (*world.read_resource::<ScreenDimensions>()).clone();
 
+        // initializing player sprite
+        self.sprite_sheet_handle.replace(load_player_spritesheet(world));
+
+        // Initialize player sprite and position
+        init_player(world, self.sprite_sheet_handle.clone().unwrap(), &dimensions);
+        load_player_spritesheet(world);
+
         // Place the camera
         init_camera(world, &dimensions);
 
         // Load our sprites and display them
-        let sprites = load_sprites(world);
-        init_sprites(world, &sprites, &dimensions);
+        // let sprite = load_sprites(world);
+        // init_sprites(world, &sprite, &dimensions);
 
         create_ui_example(world);
     }
@@ -75,6 +86,27 @@ impl SimpleState for MyState {
     }
 }
 
+// Basic Data for PLayer
+pub struct Player {
+    pub width: f32,
+    pub height: f32
+}
+
+impl Player {
+    fn new() -> Player {
+        Player {
+            width: 10.,
+            height: 10.
+        }
+    }
+}
+
+impl Component for Player {
+    type Storage = DenseVecStorage<Self>;
+}
+// basic data for player END
+
+
 /// Creates a camera entity in the `world`.
 ///
 /// The `dimensions` are used to center the camera in the middle
@@ -94,7 +126,7 @@ fn init_camera(world: &mut World, dimensions: &ScreenDimensions) {
 /// which will then be assigned to entities for rendering them.
 ///
 /// The provided `world` is used to retrieve the resource loader.
-fn load_sprites(world: &mut World) -> Vec<SpriteRender> {
+fn load_sprites(world: &mut World) -> SpriteRender {
     // Load the texture for our sprites. We'll later need to
     // add a handle to this texture to our `SpriteRender`s, so
     // we need to keep a reference to it.
@@ -125,21 +157,18 @@ fn load_sprites(world: &mut World) -> Vec<SpriteRender> {
     // Create our sprite renders. Each will have a handle to the texture
     // that it renders from. The handle is safe to clone, since it just
     // references the asset.
-    (0..3)
-        .map(|i| SpriteRender {
+    SpriteRender {
             sprite_sheet: sheet_handle.clone(),
-            sprite_number: i,
-        })
-        .collect()
+            sprite_number: 0,
+    }
 }
 
 /// Creates an entity in the `world` for each of the provided `sprites`.
 /// They are individually placed around the center of the screen.
-fn init_sprites(world: &mut World, sprites: &[SpriteRender], dimensions: &ScreenDimensions) {
-    for (i, sprite) in sprites.iter().enumerate() {
+fn init_sprites(world: &mut World, sprite: &SpriteRender, dimensions: &ScreenDimensions) {
         // Center our sprites around the center of the window
-        let x = (i as f32 - 1.) * 100. + dimensions.width() * 0.5;
-        let y = (i as f32 - 1.) * 100. + dimensions.height() * 0.5;
+        let x = (- 1.) * 100. + dimensions.width() * 0.5;
+        let y = ( - 1.) * 100. + dimensions.height() * 0.5;
         let mut transform = Transform::default();
         transform.set_translation_xyz(x, y, 0.);
 
@@ -152,7 +181,6 @@ fn init_sprites(world: &mut World, sprites: &[SpriteRender], dimensions: &Screen
             .with(sprite.clone())
             .with(transform)
             .build();
-    }
 }
 
 /// Creates a simple UI background and a UI text label
@@ -206,4 +234,49 @@ pub fn create_ui_example(world: &mut World) {
             Anchor::TopLeft,
         ))
         .build();
+}
+
+
+// Loads the player sprite
+fn load_player_spritesheet(world: &mut World) -> Handle<SpriteSheet> {
+    let texture_handle = {
+        let loader = world.read_resource::<Loader>();
+        let texture_storage = world.read_resource::<AssetStorage<Texture>>();
+        loader.load(
+            "sprites/player.png",
+            ImageFormat::default(),
+            (),
+            &texture_storage,
+        )
+    };
+
+    let loader = world.read_resource::<Loader>();
+    let sprite_sheet_store = world.read_resource::<AssetStorage<SpriteSheet>>();
+
+    loader.load(
+        "sprites/player.ron",
+        SpriteSheetFormat(texture_handle),
+        (),
+        &sprite_sheet_store,
+    )
+
+}
+
+
+fn init_player(world: &mut World, sprite_sheet_handle: Handle<SpriteSheet>, dimensions: &ScreenDimensions) {
+
+    let mut transform = Transform::default();
+    
+    let sprite_render = SpriteRender::new(sprite_sheet_handle, 0);
+
+    let y = dimensions.height() * 0.5;
+    let x = dimensions.width() * 0.5;
+
+    transform.set_translation_xyz(x, y, 0.0);
+
+    world.create_entity()
+    .with(sprite_render)
+    .with(Player::new())
+    .with(transform)
+    .build();
 }
